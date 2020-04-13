@@ -1,0 +1,16 @@
+.cache
+.classpath
+.project
+.settings/
+.idea
+.bloop
+.metals
+/project/metals.sbt
+/project/target/
+target/
+/bin
+appendonly.aof
+dump.rdb
+tmp/
+logs/
+version.tmp
