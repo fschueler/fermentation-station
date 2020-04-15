@@ -1,5 +1,8 @@
 package de.fschueler.fermentation.domain
 
+import java.time.ZonedDateTime
+import java.util.UUID
+
 import cats.Applicative
 import cats.effect.Sync
 import io.circe.Decoder.Result
@@ -9,16 +12,20 @@ import org.http4s.{EntityDecoder, EntityEncoder}
 
 /** Represents a temperature and humidity reading.
   *
-  * @param temp The temperature as read from the sensor.
+  * @param experimentId The ID of the experiment this reading belongs to.
+  * @param temperature The temperature as read from the sensor.
   * @param humidity The humidity as read from the sensor.
+  * @param timestamp The timestamp of the reading from the sensor.
   */
-final case class Reading(temp: Double, humidity: Double)
+final case class Reading(experimentId: UUID, temperature: Double, humidity: Double, timestamp: ZonedDateTime)
 
 object Reading {
   implicit val readingEncoder: Encoder[Reading] = new Encoder[Reading] {
     final def apply(a: Reading): Json = Json.obj(
-      ("temperature", Json.fromDouble(a.temp).getOrElse(Json.Null)),
+      ("experimentId", Json.fromString(a.experimentId.toString)),
+      ("temperature", Json.fromDouble(a.temperature).getOrElse(Json.Null)),
       ("humidity", Json.fromDouble(a.humidity).getOrElse(Json.Null)),
+      ("timestamp", Json.fromString(a.timestamp.toString))
     )
   }
 
@@ -26,10 +33,13 @@ object Reading {
     jsonEncoderOf[F, Reading]
 
   implicit val readingDecoder: Decoder[Reading] = new Decoder[Reading] {
-    override def apply(c: HCursor): Result[Reading] = for {
-      temp <- c.downField("temperature").as[Double]
-      humi <- c.downField("humidity").as[Double]
-    } yield Reading(temp, humi)
+    override def apply(c: HCursor): Result[Reading] =
+      for {
+        id   <- c.downField("experimentId").as[UUID]
+        temp <- c.downField("temperature").as[Double]
+        humi <- c.downField("humidity").as[Double]
+        ts   <- c.downField("timestamp").as[ZonedDateTime]
+      } yield Reading(id, temp, humi, ts)
   }
 
   implicit def readingEntityDecoder[F[_]: Sync]: EntityDecoder[F, Reading] =

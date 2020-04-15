@@ -1,7 +1,8 @@
 package de.fschueler.fermentation.controller
 
 import cats.effect.{ConcurrentEffect, ContextShift, Timer}
-import de.fschueler.fermentation.interpreter.InMemoryReadingStore
+import de.fschueler.fermentation.config.ServiceConf
+import de.fschueler.fermentation.interpreter.{InMemoryExperimentStore, InMemoryReadingStore, SimpleExperimentController}
 import fs2.Stream
 import org.http4s.client.blaze.BlazeClientBuilder
 import org.http4s.implicits._
@@ -12,24 +13,34 @@ import scala.concurrent.ExecutionContext.global
 
 object Server {
 
-  def stream[F[_]: ConcurrentEffect](implicit T: Timer[F], C: ContextShift[F]): Stream[F, Nothing] = {
+  def stream[F[_]: ConcurrentEffect](
+    config: ServiceConf
+  )(implicit T: Timer[F], C: ContextShift[F]): Stream[F, Nothing] = {
     for {
       client <- BlazeClientBuilder[F](global).stream
-      readingAlg = new InMemoryReadingStore[F]
+      readingAlg           = new InMemoryReadingStore[F]
+      experimentAlg        = new InMemoryExperimentStore[F]
+      experimentController = new SimpleExperimentController[F]
 
       // Combine Service Routes into an HttpApp.
       // Can also be done via a Router if you
       // want to extract a segments not checked
       // in the underlying routes.
       httpApp = (
-        Routes.readingRoutes[F](readingAlg)
-      ).orNotFound
+        Routes
+          .readingRoutes[F](
+            readingAlg,
+            experimentAlg,
+            experimentController
+          )
+        )
+        .orNotFound
 
       // With Middlewares in place
       finalHttpApp = Logger.httpApp(true, true)(httpApp)
 
       exitCode <- BlazeServerBuilder[F]
-        .bindHttp(8080, "0.0.0.0")
+        .bindHttp(config.port, config.host)
         .withHttpApp(finalHttpApp)
         .serve
     } yield exitCode

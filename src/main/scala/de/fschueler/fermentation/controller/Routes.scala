@@ -1,14 +1,16 @@
 package de.fschueler.fermentation.controller
 
 import cats.Applicative
+import cats.data.OptionT
 import cats.effect.Sync
 import cats.implicits._
-import de.fschueler.fermentation.algebra.ReadingStore
+import de.fschueler.fermentation.algebra.{ExperimentController, ExperimentStore, ReadingStore}
 import de.fschueler.fermentation.domain.Reading
 import io.circe.{Encoder, Json}
-import org.http4s.circe.jsonEncoderOf
+import io.circe.literal._
+import org.http4s.circe._
 import org.http4s.dsl.Http4sDsl
-import org.http4s.{EntityEncoder, HttpRoutes}
+import org.http4s.{EntityEncoder, HttpRoutes, Response}
 
 object Routes {
 
@@ -20,7 +22,11 @@ object Routes {
   implicit def readingSeqEntityEncoder[F[_]: Applicative]: EntityEncoder[F, Seq[Reading]] =
     jsonEncoderOf[F, Seq[Reading]]
 
-  def readingRoutes[F[_]: Sync](readingStore: ReadingStore[F]): HttpRoutes[F] = {
+  def readingRoutes[F[_]: Sync](
+    readingStore: ReadingStore[F],
+    experimentStore: ExperimentStore[F],
+    experimentController: ExperimentController[F]
+  ): HttpRoutes[F] = {
     val dsl = new Http4sDsl[F] {}
     import dsl._
 
@@ -32,11 +38,13 @@ object Routes {
         } yield response
 
       case req @ POST -> Root / "reading" =>
-        for {
-          reading  <- req.as[Reading]
-          _        <- readingStore.store(reading)
-          response <- Ok("""Reading stored""")
-        } yield response
+        (for {
+          reading    <- OptionT.liftF(req.as[Reading])
+          experiment <- OptionT(experimentStore.get(reading.experimentId))
+          _          <- OptionT.liftF(readingStore.store(reading))
+          _          <- OptionT.liftF(experimentController.process(reading, experiment))
+        } yield Ok(json"""{"stored": "true"}"""))
+          .getOrElseF(BadRequest())
     }
   }
 
