@@ -38,13 +38,15 @@ object Routes {
         } yield response
 
       case req @ POST -> Root / "reading" =>
-        (for {
+        val res: OptionT[F, Json] = for {
           reading    <- OptionT.liftF(req.as[Reading])
           experiment <- OptionT(experimentStore.get(reading.experimentId))
           _          <- OptionT.liftF(readingStore.store(reading))
           _          <- OptionT.liftF(experimentController.process(reading, experiment))
-        } yield Ok(json"""{"stored": "true"}"""))
-          .getOrElseF(BadRequest())
+        } yield json"""{"stored": "true"}"""
+
+        res.value.flatMap(v => v.fold(BadRequest())(json => Ok(json)))
+
     }
   }
 
