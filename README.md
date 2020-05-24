@@ -1,6 +1,6 @@
 # Fermentation Station
 
-A project to build hardware and software for a fermentation ecosystem.
+A project to build hardware and software for a fermentation station.
 
 The first part is to build a controller for a fermentation chamber as described in [The Noma Guide to Fermentation](https://www.amazon.com/Noma-Guide-Fermentation-lacto-ferments-Foundations/dp/1579657184/).
 
