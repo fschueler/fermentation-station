@@ -38,6 +38,12 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
     seed <- timer.clock.realTime(TimeUnit.MILLISECONDS)
   } yield createProbeReading.runA(Seed(seed)).value
 
+  val turnOnHeatingMat: F[Unit] = F.delay(println("heating: ON"))
+  val turnOffHeatingMat: F[Unit] = F.delay(println("heating: OFF"))
+
+  val turnOnVaporizer: F[Unit] = F.delay(println("vaporizer: ON"))
+  val turnOffVaporizer: F[Unit] = F.delay(println("vaporizer: OFF"))
+
   // publishing 15 text events, then single quit event, then publish more text events
   def startPublisher: fs2.Stream[F, Unit] = {
     val readingEvents = eventsTopic.publish(
@@ -52,17 +58,22 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
   }
 
   val targetTemp: Double = 23.0
+  val targetHum: Double = 80.0
 
   def heatingMat: Pipe[F, Event, Unit] = source => source.flatMap {
     case Measurement(time, temp, _) =>
-      Stream.eval(F.delay(println(s"Time: $time, temp: $temp")))
+      val logReading = Stream.eval(F.delay(println(s"Time: $time, temp: $temp")))
+      val adjustTemp = Stream.eval(if (temp < targetTemp) turnOnHeatingMat else turnOffHeatingMat)
+      logReading ++ adjustTemp
     case Quit => Stream.eval(interrupter.set(true))
     case _ => Stream.empty
   }
 
   def vaporizer: Pipe[F, Event, Unit] = source => source.flatMap {
     case Measurement(time, _, humidity) =>
-      Stream.eval(F.delay(println(s"Time: $time, humidity: $humidity")))
+      val logReading = Stream.eval(F.delay(println(s"Time: $time, humidity: $humidity")))
+      val adjustHumi = Stream.eval(if (humidity < targetHum) turnOnVaporizer else turnOffVaporizer)
+      logReading ++ adjustHumi
     case Quit => Stream.eval(interrupter.set(true))
     case _ => Stream.empty
   }
