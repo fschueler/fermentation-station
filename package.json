@@ -1,0 +1,14 @@
+{
+  "name": "fermentation-station",
+  "version": "1.0.0",
+  "description": "Fermantation Station local UI",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "fschueler@posteo.de",
+  "license": "GPL-3.0-or-later"
+}

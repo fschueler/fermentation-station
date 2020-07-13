@@ -1,26 +1,29 @@
-package de.fschueler.fermentation
+package de.fschueler.fermentation.controller
 
 import java.time.ZonedDateTime
 import java.util.UUID
 
-import cats.implicits._
-import io.circe._
-import io.circe.syntax._
-import io.circe.literal._
 import cats.effect._
+import de.fschueler.fermentation.algebra.ExperimentStore
+import de.fschueler.fermentation.domain.{Humidity, Reading}
+import de.fschueler.fermentation.interpreter.InMemoryReadingStore
+import io.circe._
+import io.circe.literal._
+import io.circe.syntax._
 import org.http4s.circe._
 import org.http4s.implicits._
-import de.fschueler.fermentation.controller.Routes
-import de.fschueler.fermentation.domain.Reading
-import de.fschueler.fermentation.interpreter.InMemoryReadingStore
-import org.http4s.{EntityDecoder, Method, Request, Response, Status}
+import org.http4s._
+import org.mockito.MockitoSugar
+import squants.thermal.{Celsius, Temperature}
+import de.fschueler.fermentation.algebra.ExperimentController
+import de.fschueler.fermentation.algebra.ReadingStore
 
-class ReadingControllerSpec extends munit.FunSuite {
+class ReadingControllerSpec extends munit.FunSuite with MockitoSugar {
 
   val id      = UUID.randomUUID()
   val ts      = ZonedDateTime.now()
-  val temp    = 12.5
-  val humi    = 53.0
+  val temp    = Temperature(25.5, Celsius)
+  val humi    = Humidity(53.0)
   val reading = Reading(id, temp, humi, ts)
 
   test("Get status route") {
@@ -37,10 +40,12 @@ class ReadingControllerSpec extends munit.FunSuite {
   }
 
   test("Get empty readings") {
-    val store = new InMemoryReadingStore[IO]
+    val store: ReadingStore[IO]                        = new InMemoryReadingStore[IO]
+    val experimentStore: ExperimentStore[IO]           = mock[ExperimentStore[IO]]
+    val experimentController: ExperimentController[IO] = mock[ExperimentController[IO]]
 
     val response: IO[Response[IO]] = Routes
-      .readingRoutes[IO](store)
+      .readingRoutes[IO](store, experimentStore, experimentController)
       .orNotFound
       .run(
         Request(method = Method.GET, uri = uri"/readings")
@@ -53,9 +58,11 @@ class ReadingControllerSpec extends munit.FunSuite {
 
   test("Insert a reading") {
     val store = new InMemoryReadingStore[IO]
+    val experimentStore: ExperimentStore[IO]           = mock[ExperimentStore[IO]]
+    val experimentController: ExperimentController[IO] = mock[ExperimentController[IO]]
 
     val insertIO: IO[Response[IO]] = Routes
-      .readingRoutes(store)
+      .readingRoutes(store, experimentStore, experimentController)
       .orNotFound
       .run(
         Request(method = Method.POST, uri = uri"/reading").withEntity(reading.asJson)
@@ -67,10 +74,13 @@ class ReadingControllerSpec extends munit.FunSuite {
 
   test("Get readings") {
     val store = new InMemoryReadingStore[IO]
+    val experimentStore: ExperimentStore[IO]           = mock[ExperimentStore[IO]]
+    val experimentController: ExperimentController[IO] = mock[ExperimentController[IO]]
+
     store.store(reading)
 
     val response: IO[Response[IO]] = Routes
-      .readingRoutes[IO](store)
+      .readingRoutes[IO](store, experimentStore, experimentController)
       .orNotFound
       .run(
         Request(method = Method.GET, uri = uri"/readings")
@@ -83,8 +93,11 @@ class ReadingControllerSpec extends munit.FunSuite {
 
   test("insert and retrieve a reading") {
     val store = new InMemoryReadingStore[IO]
+    val experimentStore: ExperimentStore[IO]           = mock[ExperimentStore[IO]]
+    val experimentController: ExperimentController[IO] = mock[ExperimentController[IO]]
+
     val insertIO: IO[Response[IO]] = Routes
-      .readingRoutes(store)
+      .readingRoutes(store, experimentStore, experimentController)
       .orNotFound
       .run(
         Request(method = Method.POST, uri = uri"/reading").withEntity(reading.asJson)
@@ -94,7 +107,7 @@ class ReadingControllerSpec extends munit.FunSuite {
     check[Json](insertIO, Status.Ok, Some(expectedJsonAfterInsert))
 
     val response: IO[Response[IO]] = Routes
-      .readingRoutes[IO](store)
+      .readingRoutes[IO](store, experimentStore, experimentController)
       .orNotFound
       .run(
         Request(method = Method.GET, uri = uri"/readings")
