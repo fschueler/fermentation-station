@@ -14,3 +14,4 @@ dump.rdb
 tmp/
 logs/
 version.tmp
+.vscode

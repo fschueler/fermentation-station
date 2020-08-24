@@ -10,6 +10,8 @@ import cats.effect.{Concurrent, ExitCode, IO, IOApp, Timer}
 import scala.concurrent.duration._
 import java.util.concurrent.TimeUnit
 import cats.data.State
+import de.fschueler.fermentation.interpreter.sensors.MockDHT22
+import de.fschueler.fermentation.algebra.Sensor
 
 sealed trait Event
 case class Text(value: String) extends Event
@@ -20,23 +22,12 @@ final case class Seed(long: Long) {
   def next = Seed(long * 6364136223846793005L + 1442695040888963407L)
 }
 
-class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRef[F, Boolean])(
+class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRef[F, Boolean], dht22: Sensor[F])(
   implicit F: Concurrent[F],
   timer: Timer[F]
 ) {
 
-  val nextLong: State[Seed, Long] = State(seed => (seed.next, seed.long))
-  val nextDouble: State[Seed, Double] = nextLong.map(long => long.toDouble)
-
-  def createProbeReading: State[Seed, Measurement] = for {
-    timestamp <- nextLong
-    temp <- nextDouble
-    humidity <- nextDouble
-  } yield Measurement(timestamp, temp, humidity)
-
-  def probeTemperatureAndHumidity: F[Measurement] = for {
-    seed <- timer.clock.realTime(TimeUnit.MILLISECONDS)
-  } yield createProbeReading.runA(Seed(seed)).value
+  def probeTemperatureAndHumidity: F[Measurement] = dht22.getMeasurement
 
   val turnOnHeatingMat: F[Unit] = F.delay(println("heating: ON"))
   val turnOffHeatingMat: F[Unit] = F.delay(println("heating: OFF"))
@@ -94,7 +85,7 @@ object PubSubStream extends IOApp {
   val program = for {
     topic  <- Stream.eval(Topic[IO, Event](Text("Initial Event")))
     signal <- Stream.eval(SignallingRef[IO, Boolean](false))
-    service = new EventService[IO](topic, signal)
+    service = new EventService[IO](topic, signal, new MockDHT22())
     _ <- service.startPublisher.concurrently(service.startSubscribers)
   } yield ()
 
