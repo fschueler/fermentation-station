@@ -12,6 +12,9 @@ import java.util.concurrent.TimeUnit
 import cats.data.State
 import de.fschueler.fermentation.interpreter.sensors.MockDHT22
 import de.fschueler.fermentation.algebra.Sensor
+import de.fschueler.fermentation.interpreter.sensors.DHT22Impl
+import com.pi4j.io.gpio.GpioController
+import com.pi4j.io.gpio.GpioFactory
 
 sealed trait Event
 case class Text(value: String) extends Event
@@ -82,12 +85,24 @@ class EventService[F[_]](eventsTopic: Topic[F, Event], interrupter: SignallingRe
 }
 
 object PubSubStream extends IOApp {
+  println("Startup...")
+  val gpioController: GpioController = GpioFactory.getInstance()
+  val dht22: Sensor[IO] = new DHT22Impl(gpioController)
+
   val program = for {
     topic  <- Stream.eval(Topic[IO, Event](Text("Initial Event")))
     signal <- Stream.eval(SignallingRef[IO, Boolean](false))
-    service = new EventService[IO](topic, signal, new MockDHT22())
+    service = new EventService[IO](topic, signal, dht22)
     _ <- service.startPublisher.concurrently(service.startSubscribers)
   } yield ()
 
   override def run(args: List[String]): IO[ExitCode] = program.compile.drain.as(ExitCode.Success)
+
+  def shutDown: IO[Unit] = IO {
+    println(" .. shutting down now ...");
+
+        // stop all GPIO activity/threads by shutting down the GPIO controller
+        // (this method will forcefully shutdown all GPIO monitoring threads and scheduled tasks)
+    gpioController.shutdown();
+  }
 }
